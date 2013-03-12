@@ -59,7 +59,7 @@ while read line; do
   # Rotate if required
   bytes=$((bytes + ${#line}))
   if [ $bytes -gt $SIZE ]; then
-    for i in `seq $((FILES - 1)) 1`; do
+    for i in `seq $((FILES - 1)) -1 1`; do
       [ -f "$FILE.$i" ] && mv -f "$FILE.$i" "$FILE.$((i + 1))"
     done
     mv -f "$FILE" "$FILE.1"
