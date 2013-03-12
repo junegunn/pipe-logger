@@ -39,7 +39,16 @@ if [ $# -ne 1 ]; then
 fi
 FILE=$1
 
-bytes=0
+if [ -f "$FILE" ]; then
+  if [ `uname` = 'Darwin' ]; then
+    bytes=`stat -f%z "$FILE"`
+  else
+    bytes=`stat -c%s "$FILE"`
+  fi
+else
+  bytes=0
+fi
+
 while read line; do
   # Log formatting
   if [ $TIME_PREFIX -eq 1 ]; then
