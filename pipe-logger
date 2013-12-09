@@ -1,72 +1,83 @@
-#!/bin/bash
+#!/usr/bin/env ruby
 
-SIZE=$(( 10 * 1024 * 1024 ))
-FILES=10
-TIME_PREFIX=0
+require 'optparse'
+require 'fileutils'
 
-usage() {
-  echo "$BASH_SOURCE [-s SIZE[k|m|g]] [-n #FILES] [-t] FILENAME"
-}
+# Defaults
+size      = 10 * 1024 ** 2
+count     = 10
+timestamp = false
 
-while getopts "s:n:th" opt; do
-  case $opt in
-    s )
-      SIZE=$(echo $OPTARG | tr '[:upper:]' '[:lower:]')
-      if [ ${SIZE%k} != $SIZE ]; then
-        SIZE=$(( ${SIZE%k} * 1024 ))
-      elif [ ${SIZE%m} != $SIZE ]; then
-        SIZE=$(( ${SIZE%m} * 1024 * 1024 ))
-      elif [ ${SIZE%g} != $SIZE ]; then
-        SIZE=$(( ${SIZE%g} * 1024 * 1024 * 1024 ))
-      fi
-    ;;
-    n )
-      FILES=$OPTARG
-    ;;
-    t )
-      TIME_PREFIX=1
-    ;;
-    h )
-      usage
-      exit 0
-  esac
-done
-shift $(($OPTIND -1))
+oparser = OptionParser.new do |opts|
+  opts.banner = "usage: #$0 [-s SIZE[k|m|g]] [-n #FILES] [-t] FILENAME"
+  opts.on('-s SIZE', 'Maximum size of each file') do |s|
+    num, suffix = s[0...-1], s[-1, 1]
+    size =
+      (num.to_f * 1024 ** (
+        case s[-1, 1]
+        when /k/i then 1
+        when /m/i then 2
+        when /g/i then 3
+        else
+          puts opts
+          exit
+        end)).to_i
 
-if [ $# -ne 1 ]; then
-  usage
-  exit 1
-fi
-FILE=$1
+    unless size > 0
+      puts opts
+      exit
+    end
+  end
 
-if [ -f "$FILE" ]; then
-  if [ `uname` = 'Darwin' ]; then
-    bytes=`stat -f%z "$FILE"`
-  else
-    bytes=`stat -c%s "$FILE"`
-  fi
-else
-  bytes=0
-fi
+  opts.on('-n COUNT', 'Number of files') do |n|
+    unless (count = n.to_i) > 0
+      puts opts
+      exit
+    end
+  end
 
-while read line; do
-  # Log formatting
-  if [ $TIME_PREFIX -eq 1 ]; then
-    line="$(date '+[%Y/%m/%d %H:%M:%S]') $line"
-  fi
-  line="$line\n"
+  opts.on('-t', 'Prepend timestamp') do |t|
+    timestamp = t
+  end
+end
 
-  # Rotate if required
-  bytes=$((bytes + ${#line}))
-  if [ $bytes -gt $SIZE ]; then
-    for i in `seq $((FILES - 1)) -1 1`; do
-      [ -f "$FILE.$i" ] && mv -f "$FILE.$i" "$FILE.$((i + 1))"
-    done
-    mv -f "$FILE" "$FILE.1"
-    bytes=0
-  fi
+oparser.parse!
 
-  # Log
-  echo -en $line >> "$FILE"
-done
+if ARGV.length != 1
+  puts oparser
+  exit
+end
+
+prefix = ARGV.first
+bytes  = File.exists?(prefix) ? File.size?(prefix) : 0
+file   = File.open(prefix, 'a')
+begin
+  while line = $stdin.gets
+    line = Time.now.strftime("[%Y/%m/%d %H:%M:%S] ") << line if timestamp
+
+    bytes += line.length
+    if bytes > size
+      file.close
+
+      # Rotate files
+      Dir["#{prefix}.*"].map { |fn|
+        [fn, fn.match(/[0-9]+$/)[0].to_i]
+      }.sort_by { |e| - e.last }.each do |pair|
+        fn, index = pair
+        if index < count
+          FileUtils.mv fn, [prefix, index + 1].join('.')
+        end
+      end
+      FileUtils.mv prefix, [prefix, 1].join('.')
+
+      # Reopen
+      file  = File.open(prefix, 'a')
+      bytes = 0
+    end
+
+    file << line
+  end
+ensure
+  file.close
+end
 
