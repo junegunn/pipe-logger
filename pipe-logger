@@ -76,6 +76,7 @@ begin
     end
 
     file << line
+    file.flush
   end
 ensure
   file.close
