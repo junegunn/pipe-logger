@@ -72,9 +72,11 @@ while true
           file.close rescue nil
 
           # Rotate files
-          Dir["#{prefix}.*"].map { |fn|
-            [fn, fn.match(/[0-9]+$/)[0].to_i]
-          }.sort_by { |e| - e.last }.each do |pair|
+          Dir["#{prefix}.*"].select { |fn| fn =~ /[0-9]+$/ }.map { |fn|
+            if md = fn.match(/[0-9]+$/)
+              [fn, md[0].to_i]
+            end
+          }.compact.sort_by { |e| - e.last }.each do |pair|
             fn, index = pair
             if index < count
               FileUtils.mv(fn, [prefix, index + 1].join('.')) rescue nil
