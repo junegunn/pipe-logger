@@ -48,37 +48,59 @@ if ARGV.length != 1
   exit
 end
 
+def ymd
+  Time.now.strftime("%Y/%m/%d %H:%M:%S")
+end
+
+def on_error x
+  $stderr.puts "[#{ymd}] ERROR: #{x.inspect}"
+  $stderr.puts x.backtrace
+end
+
 prefix = ARGV.first
-bytes  = File.exists?(prefix) ? File.size?(prefix) : 0
-file   = File.open(prefix, 'a')
-begin
-  while line = $stdin.gets
-    line = Time.now.strftime("[%Y/%m/%d %H:%M:%S] ") << line if timestamp
+while true
+  begin
+    bytes = File.exists?(prefix) && File.size?(prefix) || 0
+    file  = File.open(prefix, 'a')
 
-    bytes += line.length
-    if bytes > size
-      file.close
+    begin
+      while line = $stdin.gets
+        line = "[#{ymd}] #{line}" if timestamp
 
-      # Rotate files
-      Dir["#{prefix}.*"].map { |fn|
-        [fn, fn.match(/[0-9]+$/)[0].to_i]
-      }.sort_by { |e| - e.last }.each do |pair|
-        fn, index = pair
-        if index < count
-          FileUtils.mv fn, [prefix, index + 1].join('.')
+        bytes += line.length
+        if bytes > size
+          file.close rescue nil
+
+          # Rotate files
+          Dir["#{prefix}.*"].map { |fn|
+            [fn, fn.match(/[0-9]+$/)[0].to_i]
+          }.sort_by { |e| - e.last }.each do |pair|
+            fn, index = pair
+            if index < count
+              FileUtils.mv(fn, [prefix, index + 1].join('.')) rescue nil
+            end
+          end
+          FileUtils.mv(prefix, [prefix, 1].join('.')) rescue nil
+
+          # Reset
+          file  = File.open(prefix, 'a')
+          bytes = 0
         end
+
+        file << line
+        file.flush
       end
-      FileUtils.mv prefix, [prefix, 1].join('.')
-
-      # Reopen
-      file  = File.open(prefix, 'a')
-      bytes = 0
+      break
+    rescue Exception => e
+      on_error e
+    ensure
+      file.close rescue nil
     end
-
-    file << line
-    file.flush
+  rescue Exception => e
+    on_error e
   end
-ensure
-  file.close
+
+  $stderr.puts "[#{ymd}] Restarting pipe-logger in 1 second"
+  sleep 1
 end
 
