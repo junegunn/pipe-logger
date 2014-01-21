@@ -86,7 +86,7 @@ while true
 
           # Reset
           file  = File.open(prefix, 'a')
-          bytes = 0
+          bytes = line.length
         end
 
         file << line
