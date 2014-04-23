@@ -6,10 +6,11 @@ require 'fileutils'
 # Defaults
 size      = 10 * 1024 ** 2
 count     = 10
+fsync     = false
 timestamp = false
 
 oparser = OptionParser.new do |opts|
-  opts.banner = "usage: #$0 [-s SIZE[k|m|g]] [-n #FILES] [-t] FILENAME"
+  opts.banner = "usage: #$0 [-s SIZE[k|m|g]] [-n #FILES] [-f] [-t] FILENAME"
   opts.on('-s SIZE', 'Maximum size of each file') do |s|
     num, suffix = s[0...-1], s[-1, 1]
     size =
@@ -34,6 +35,10 @@ oparser = OptionParser.new do |opts|
       puts opts
       exit
     end
+  end
+
+  opts.on('-f', 'fsync immediately') do |f|
+    fsync = true
   end
 
   opts.on('-t', 'Prepend timestamp') do |t|
@@ -90,7 +95,11 @@ while true
         end
 
         file << line
-        file.flush
+        if fsync
+          file.fsync
+        else
+          file.flush
+        end
       end
       break
     rescue Exception => e
