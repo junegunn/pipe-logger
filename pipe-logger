@@ -8,9 +8,10 @@ size      = 10 * 1024 ** 2
 count     = 10
 fsync     = false
 timestamp = false
+gzip      = false
 
 oparser = OptionParser.new do |opts|
-  opts.banner = "usage: #$0 [-s SIZE[k|m|g]] [-n #FILES] [-f] [-t] FILENAME"
+  opts.banner = "usage: #$0 [-s SIZE[k|m|g]] [-n #FILES] [-f] [-t] [-z] FILENAME"
   opts.on('-s SIZE', 'Maximum size of each file') do |s|
     num, suffix = s[0...-1], s[-1, 1]
     size =
@@ -44,6 +45,11 @@ oparser = OptionParser.new do |opts|
   opts.on('-t', 'Prepend timestamp') do |t|
     timestamp = t
   end
+
+  opts.on('-z', 'Gzip archive log') do |z|
+    raise RuntimeError, 'gzip executable not found' if `which gzip`.empty?
+    gzip = z
+  end
 end
 
 oparser.parse!
@@ -67,6 +73,7 @@ while true
   begin
     bytes = File.exists?(prefix) && File.size?(prefix) || 0
     file  = File.open(prefix, 'a')
+    pat   = /([0-9]+)(\.gz)?$/
 
     begin
       while line = $stdin.gets
@@ -77,17 +84,19 @@ while true
           file.close rescue nil
 
           # Rotate files
-          Dir["#{prefix}.*"].select { |fn| fn =~ /[0-9]+$/ }.map { |fn|
-            if md = fn.match(/[0-9]+$/)
-              [fn, md[0].to_i]
+          Dir["#{prefix}.*"].select { |fn| fn =~ pat }.map { |fn|
+            if md = fn.match(pat)
+              [fn, md[1].to_i, md[2]]
             end
-          }.compact.sort_by { |e| - e.last }.each do |pair|
-            fn, index = pair
+          }.compact.sort_by { |e| - e[1] }.each do |triplet|
+            fn, index, suffix = triplet
             if index < count
-              FileUtils.mv(fn, [prefix, index + 1].join('.')) rescue nil
+              FileUtils.mv(fn, [prefix, '.', index + 1, suffix].join) rescue nil
             end
           end
-          FileUtils.mv(prefix, [prefix, 1].join('.')) rescue nil
+          dest = [prefix, 1].join('.')
+          FileUtils.mv(prefix, dest) rescue nil
+          system("gzip #{dest}") if gzip
 
           # Reset
           file  = File.open(prefix, 'a')
